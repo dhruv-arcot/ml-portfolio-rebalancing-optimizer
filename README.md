@@ -1,66 +1,126 @@
-# Intelligent Tax Aware Portfolio Rebalancing Solution using Long-Horizon forecasting models
-An ML solution to perform tax-aware stock portfolio rebalancing 
+# ML Portfolio Rebalancing Optimizer
 
+An intelligent machine learning solution for tax-aware stock portfolio rebalancing using long-horizon forecasting models.
 
-This directory contains scripts for stock-level feature engineering, time-series forecasting (LSTM / RNN), classical ML baselines (XGBoost, Linear Regression), mutual-fund rebalancing tax simulation, and a simple LSTM-based sell/no-sell decisioner.
+## Overview
 
-project/
-│
-├── preprocessor.py                       # Feature engineering + supervised window building + scaling
-├── lstm.py                               # LSTM model architecture + training + evaluation
-├── rnn.py                                # Vanilla RNN/GRU architecture + training + evaluation
-├── xgb.py                                # XGBoost training + prediction
-├── lr.py                                 # Linear Regression training + prediction
-├── main.py                               # Orchestration (run_lstm, run_rnn, run_lr, run_xgb)
-├── decide_sell.py                        # Inference-only: load model -> predict -> boolean sell decision
-├── fund_net_returns_calculator.py        # Monthly rebalancing + tax simulation for fund CSVs
-├── results/                              # Output models / predictions / summaries (created by runs)
-└── stock_dataset/processed_stocks/       # Per-ticker CSVs (Date,Close,High,Low,Open,Volume)
+This system combines deep learning (LSTM/RNN) and classical ML approaches (XGBoost, Linear Regression) to predict stock returns and optimize portfolio rebalancing decisions while accounting for tax implications.
 
-Data format
+## Features
 
-Place historical stock CSVs under:
-stock_dataset/processed_stocks/
+- **Multi-Model Forecasting**: LSTM, RNN, XGBoost, and Linear Regression models
+- **Tax-Aware Rebalancing**: Optimizes trades considering capital gains tax impact
+- **Feature Engineering**: Automated extraction of technical indicators and time-based features
+- **Production-Ready**: Structured for deployment with proper error handling and validation
+- **Comprehensive Evaluation**: Model performance tracking and comparison
 
+## Quick Start
 
-CSV schema for each individual stock
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-"""
+# Train all models
+python main.py
+
+# Run tax-aware portfolio optimization
+python fund_net_returns_calculator.py
+
+# Make individual sell/hold decisions
+python decide_sell.py
+```
+
+## Architecture
+
+```
+src/
+├── preprocessor.py          # Feature engineering and data preparation
+├── models/
+│   ├── lstm.py             # LSTM model architecture
+│   ├── rnn.py              # RNN model architecture  
+│   ├── xgb.py              # XGBoost model
+│   └── lr.py               # Linear Regression model
+├── main.py                 # Training orchestration
+├── decide_sell.py          # Inference for sell/hold decisions
+└── fund_net_returns_calculator.py  # Tax-aware portfolio optimization
+```
+
+## Data Requirements
+
+### Stock Price Data
+Place historical stock CSV files in `stock_dataset/processed_stocks/`:
+
+```csv
 Date,Close,High,Low,Open,Volume
 2015-01-02,24.23,24.705,23.79,24.69,212818400
 2015-01-05,23.55,24.086,23.36,24.00,257142000
-"""
+```
+
+### Portfolio Data
+Fund composition files in `funds/`:
+
+```csv
+Date,Stock,Weight
+2025-01-31,AAPL,30
+2025-01-31,MSFT,70
+2025-02-28,AAPL,28
+```
+
+## Model Configuration
+
+### Training Parameters
+- **Input Window**: 180 trading days (~6 months)
+- **Forecast Horizon**: 182 days (~6 months)
+- **Training Period**: 2020-2022
+- **Test Period**: 2023-2025
+- **Features**: Returns, moving averages, volatility, momentum, volume, cyclical time
+
+### Model Architecture
+- **LSTM**: 2 layers, 128 hidden units, dropout 0.2
+- **RNN**: 2 layers, 128 hidden units, dropout 0.2  
+- **XGBoost**: 400 estimators, max depth 6
+- **Linear Regression**: Standard sklearn implementation
 
 
-High-level pipeline (what each run_* does)
 
-1. Load stock CSV
-2. Feature engineering (returns, moving averages, volatility, cyclical time features…)
-3. Supervised window building:
-    Input window: 180 trading days
-    Forecast horizon: ~6 calendar months ≈ 182 days
+## Usage
 
-4. Automatic alignment to previous trading day
-5. Train/Test split:
-    Train: 2020–2022
-    Test: 2023–2025
+### Training Models
+```bash
+# Train all models with default settings
+python main.py
 
-6. Feature scaling (per stock)
-7. Model training
-8. Save:
+# Models are saved in results/{model_type}/
+# - models/ : Trained model files
+# - {ticker}_predictions.csv : Test set predictions
+# - summary_{model_type}.csv : Performance metrics
+```
 
-    Model
+### Portfolio Optimization
+```bash
+# Run tax-aware rebalancing simulation
+python fund_net_returns_calculator.py
 
-    Predictions
+# Requires:
+# - funds/ : Portfolio composition files
+# - prices/ : Current stock price data
+# - Output: tax_results/ with detailed tax impact analysis
+```
 
-    Summary CSV
+### Individual Stock Decisions
+```bash
+# Make sell/hold decision for a specific stock
+python decide_sell.py
 
-NOTE: Everything before model training is handled only inside preprocessor.py.
+# Returns boolean flag:
+# - True : Sell (predicted return < current price - tax)
+# - False : Hold
+```
 
+## Output Structure
 
-
-Output layout example (LSTM run)
-
+### Training Results
+```
 results_lstm/
 ├── models/
 │   ├── AAPL.pt
@@ -69,39 +129,44 @@ results_lstm/
 ├── AAPL_lstm_predictions.csv
 ├── MSFT_lstm_predictions.csv
 └── summary_lstm.csv
+```
 
-
-Mutual Fund Tax Simulator
-
-Folder layout:
-
-funds/
-  FundA.csv
-  FundB.csv
-
-prices/
-  AAPL.csv
-  MSFT.csv
-  ...
-
-
-CSV schema for each individual FUND
-
-"""
-Date,Stock,Weight
-2025-01-31,AAPL,30
-2025-01-31,MSFT,70
-2025-02-28,AAPL,28
-"""
-
-
+### Tax Analysis Results
+```
 tax_results/
 ├── FundA_tax_report.csv
 ├── FundB_tax_report.csv
 └── summary_funds_tax.csv
+```
 
+## Key Features
 
-Sell/no-sell decision: decide_sell.py
-Running this as a standalone script for each individual inference.
-For each constituent stock, perform inference using the stocks LSTM model to predict 6 months/ 12 months returns
-The script will return a binary flag indicating wether to perofrm re-balancing or not based on net returns post taxation
+### Tax-Aware Decision Logic
+The system optimizes rebalancing decisions by:
+1. Predicting 6-month forward returns using trained models
+2. Calculating after-tax returns: `predicted_return < current_price - capital_gains_tax`
+3. Only recommending trades that improve after-tax portfolio value
+
+### Feature Engineering
+Automated extraction of:
+- **Returns**: 1-day, 5-day, and log returns
+- **Moving Averages**: 5, 21, 63-day periods
+- **Volatility**: Rolling standard deviations
+- **Momentum**: Price momentum indicators
+- **Volume**: Volume ratios and averages
+- **Time Features**: Cyclical day/month encoding
+
+## Dependencies
+
+See `requirements.txt` for full dependency list:
+- numpy, pandas, scikit-learn
+- torch (PyTorch for deep learning)
+- xgboost (gradient boosting)
+- joblib (model serialization)
+
+## Performance Notes
+
+- **LSTM/RNN**: Best for capturing temporal patterns
+- **XGBoost**: Strong baseline with feature importance
+- **Linear Regression**: Fast, interpretable benchmark
+- All models use 180-day input windows with 182-day forecast horizon
