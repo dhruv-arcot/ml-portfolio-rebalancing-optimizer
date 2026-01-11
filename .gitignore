@@ -1,0 +1,8 @@
+# Python cache files
+__pycache__/
+
+# OS generated files
+.DS_Store
+
+# End files
+.env
