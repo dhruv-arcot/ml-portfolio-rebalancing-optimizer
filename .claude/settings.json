@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.mfapi.in)",
+      "Bash(curl -s \"https://api.mfapi.in/mf/search?q=HDFC%20Flexi\")",
+      "Bash(curl -s \"https://api.mfapi.in/mf/119551\")",
+      "Bash(python3 data_fetcher.py)",
+      "Bash(python3 -c \"import torch; print\\(torch.__version__\\)\")",
+      "Bash(python3 -c \"import xgboost; print\\(xgboost.__version__\\)\")",
+      "Bash(pip install *)",
+      "Bash(python3 -c ' *)",
+      "Bash(KMP_DUPLICATE_LIB_OK=TRUE python3 -c ' *)",
+      "Bash(python3 main_poc.py)",
+      "Bash(python3 main_poc.py --refetch)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d['naive']\\), len\\(d['aware']\\)\\)\")",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)",
+      "Skill(dataviz)",
+      "Skill(dataviz:*)",
+      "Bash(node scripts/validate_palette.js --help)",
+      "Bash(node scripts/validate_palette.js \"#2B6E64,#B2472F\" --mode light --surface \"#F3F5F1\")",
+      "Bash(node scripts/validate_palette.js \"#3E9385,#D06A4E\" --mode dark --surface \"#131B1D\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o test400.woff2 \"https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSB4Zh.woff2\")",
+      "Bash(md5 -q test400.woff2)",
+      "Bash(rm test400.woff2)",
+      "Bash(pip show *)",
+      "Bash(curl -s -o plexsans_latin.woff2 \"https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSB4Zh.woff2\")",
+      "Bash(curl -s -o plexmono400.woff2 \"https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q131nj-o.woff2\")",
+      "Bash(curl -s -o plexmono600.woff2 \"https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgsAXHNk.woff2\")",
+      "Bash(curl -s -o spectral600.woff2 \"https://fonts.gstatic.com/s/spectral/v15/rnCs-xNNww_2s0amA9vmtm3BafaPWnII.woff2\")",
+      "Bash(curl -s -o spectral700.woff2 \"https://fonts.gstatic.com/s/spectral/v15/rnCs-xNNww_2s0amA9uCt23BafaPWnII.woff2\")",
+      "Bash(node scripts/validate_palette.js \"#0A9184,#B2472F\" --mode light --surface \"#F8F9F6\")",
+      "Bash(node scripts/validate_palette.js \"#1B9C86,#D9713F\" --mode dark --surface \"#141C1E\")",
+      "Bash(python3 build_pitch.py)"
+    ]
+  }
+}

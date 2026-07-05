@@ -6,3 +6,9 @@ __pycache__/
 
 # End files
 .env
+
+# India MF PoC: fetched data and generated model/backtest output
+india_mf_poc/data/nav/*.csv
+india_mf_poc/data/scheme_meta.json
+india_mf_poc/model_output/
+india_mf_poc/results/
