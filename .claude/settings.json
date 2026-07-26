@@ -32,7 +32,11 @@
       "Bash(curl -s -o spectral700.woff2 \"https://fonts.gstatic.com/s/spectral/v15/rnCs-xNNww_2s0amA9uCt23BafaPWnII.woff2\")",
       "Bash(node scripts/validate_palette.js \"#0A9184,#B2472F\" --mode light --surface \"#F8F9F6\")",
       "Bash(node scripts/validate_palette.js \"#1B9C86,#D9713F\" --mode dark --surface \"#141C1E\")",
-      "Bash(python3 build_pitch.py)"
+      "Bash(python3 build_pitch.py)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(python3 -c \"import reportlab; print\\('reportlab available'\\)\")",
+      "Bash(python3 -c \"import weasyprint; print\\('weasyprint available'\\)\")"
     ]
   }
 }
