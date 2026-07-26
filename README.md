@@ -1,313 +1,132 @@
-# ML Portfolio Rebalancing Optimizer
+# India Mutual Fund Tax-Aware Rebalancing PoC
 
-**A comprehensive machine learning solution for tax-aware portfolio rebalancing across different investment markets and tax regimes.**
+A proof of concept for the same idea as the parent repo -- forecast forward
+returns, then decide sell/hold accounting for tax -- rebalanced against
+**Indian mutual fund taxation** instead of US capital-gains rules. Lives as a
+sibling to the US pipeline; reuses `../preprocessor.py`, `../lstm.py`,
+`../rnn.py`, `../xgb.py`, `../lr.py` unmodified.
 
-## Project Overview
+## Why this isn't a straight port of the US logic
 
-This is a CS229 (Stanford Machine Learning) course project that combines deep learning and classical ML approaches to forecast stock returns and optimize portfolio rebalancing decisions while accounting for tax implications. The project explores tax-aware rebalancing across **two distinct investment markets** with different tax structures:
+- **Fund-category-dependent tax treatment**, not one flat regime. See
+  [Tax rules implemented](#tax-rules-implemented) below.
+- **FIFO is legally mandated** for which mutual-fund units are deemed sold on
+  redemption -- you cannot cherry-pick tax-favorable lots the way
+  `../fund_net_returns_calculator.py` implicitly can with its single
+  average-cost basis. `tax_rules.FIFOLotBook` always consumes the oldest lot
+  first. That means the optimization lever here is **which scheme to trim and
+  when**, not lot selection within a scheme.
+- **Financial year is Apr-Mar**, not calendar year -- matters for the annual
+  LTCG exemption bucket.
+- Mutual funds publish a daily **NAV**, not OHLCV. See
+  [Data simplifications](#data-simplifications).
 
-- **US ETF Portfolio** – US capital gains taxation
-- **Indian Mutual Fund Portfolio** – Indian mutual fund taxation rules
+## Fund universe
 
----
+A curated basket spanning every post-Budget-2024 tax bucket, pulled live from
+[mfapi.in](https://www.mfapi.in/) (free, unauthenticated AMFI NAV data):
 
-## 🎯 Key Features
+| Label | Scheme code | Category (from API) | Tax bucket |
+|---|---|---|---|
+| large_cap | 120586 | Equity Scheme - Large Cap Fund | equity |
+| flexi_cap | 122639 | Equity Scheme - Flexi Cap Fund | equity |
+| small_cap | 125354 | Equity Scheme - Small Cap Fund | equity |
+| corp_bond | 118987 | Debt Scheme - Corporate Bond Fund | specified_debt |
+| balanced_adv | 118968 | Hybrid Scheme - Dynamic Asset Allocation or Balanced Advantage | hybrid_35_65 (assumption -- see below) |
+| gold | 119788 | Other Scheme - FoF Domestic (SBI Gold Fund) | other_nonequity |
 
-- **Multi-Model Forecasting**: LSTM, RNN, XGBoost, and Linear Regression models for stock return prediction
-- **Dual Tax Regime Support**: Separate implementations for US and Indian tax rules
-- **Tax-Aware Rebalancing**: Optimizes trades considering capital gains tax impact and holding periods
-- **Feature Engineering**: Automated extraction of technical indicators and time-based features
-- **Production-Ready**: Structured for deployment with proper error handling and validation
-- **Comprehensive Evaluation**: Model performance tracking and comparison across regimes
+Allocation targets are static (`config.TARGET_WEIGHTS`) -- this PoC is about
+tax-aware *execution*, not allocation research.
 
----
+## Tax rules implemented
 
-## 📁 Branch Organization
+Current for FY2025-26, per the Finance Act 2024 (Budget 2024) changes:
 
-This repository is organized into three branches for clarity and specialization:
+- **Equity-oriented** (>=65% equity): STCG **20%** if held <12 months; LTCG
+  **12.5%** if held >=12 months, with a **Rs 1.25 lakh/financial-year
+  exemption** pooled across all equity LTCG (s.112A) -- not per-trade, tracked
+  in `tax_rules.FYExemptionTracker`.
+- **Specified debt funds** (>=65% debt/money-market, units acquired on/after
+  1 Apr 2023): **always** taxed at the investor's income-tax **slab rate**
+  (`config.SLAB_RATE`, default 30%), no LTCG concept regardless of holding
+  period.
+- **Hybrid (35-65% equity) and other non-equity funds** (incl. gold FoFs):
+  STCG at slab rate if held <24 months; flat **12.5% LTCG** if >=24 months,
+  with **no exemption** (s.112).
 
-### 1. **main** (This branch)
-Overview, documentation, and reference materials explaining both US-ETF and Indian-MF approaches.
-- Project architecture and comparison
-- Poster information and project context
-- Quick reference guides
+Sources: [Finnovate — MF taxation FY2025-26](https://www.finnovate.in/learn/blog/mutual-fund-taxation-india-fy-2025-26),
+[PrimeInvestor — Budget 2024 equity/debt taxation](https://primeinvestor.in/reports/budget-2024-equity-and-debt-investments-taxation/),
+[Bajaj AMC — Budget 2024 MF capital gains changes](https://www.bajajamc.com/knowledge-centre/union-budget-2024-new-mutual-funds-capital-gains-tax-explained).
 
-### 2. **us-etf** 
-US-based portfolio rebalancing using US capital gains tax rules.
+## Known simplifications
 
-**Key files:**
-- `main.py` – Train all 4 model types over stock CSVs
-- `fund_net_returns_calculator.py` – Tax-aware rebalancing simulation (US capital gains)
-- `decide_sell.py` – Single sell/hold decision for a ticker/date
-- Core models: `preprocessor.py`, `lstm.py`, `rnn.py`, `xgb.py`, `lr.py`
-- `requirements.txt` – Dependencies
+- No STT, exit loads, surcharge/cess, or progressive slab brackets -- one
+  configurable flat slab rate for anything taxed at slab rate.
+- NAV-only data means `../preprocessor.py`'s `range` and `vol_ratio` features
+  are inert constants for this dataset (`data_fetcher.py` synthesizes
+  `Open=High=Low=Close`, `Volume=1.0` so the shared feature pipeline runs
+  unmodified). Returns, moving averages, volatility, momentum, and cyclical
+  time features are the ones actually carrying signal here.
+- Balanced Advantage Fund's post-Budget-2024 tax bucket is genuinely debated
+  in practice (its equity allocation floats and can cross the 65% line either
+  way); we hardcode it to `hybrid_35_65` rather than reconstruct actual daily
+  portfolio equity % (not available for free).
+- `../preprocessor.py`'s `process_file()` hardcodes its train/test split
+  internally (2020-2022 / 2023-2025) rather than taking it as a parameter, so
+  the backtest window here is capped at 2025-12-31 even though NAV history
+  extends further -- reused as-is rather than editing the shared US pipeline.
+- No loss-harvesting or loss set-off modeling -- realized losses reduce
+  `total_realized_gain` bookkeeping but don't offset other gains' tax.
+- Rebalance target weights are static; no allocation research.
 
-**Tax Logic:**
-- Short-term capital gains (holding ≤ 1 year): Ordinary income rates (typically 20-37%)
-- Long-term capital gains (holding > 1 year): Preferential rates (0%, 15%, or 20%)
+## How it works
 
-### 3. **indian-mf** 
-Indian mutual fund portfolio rebalancing using Indian mutual fund tax rules.
-
-**Key files:**
-- `main_poc.py` – Orchestrates the complete pipeline
-- `forecast.py` – Train XGBoost forecasters for mutual funds
-- `rebalancer.py` – Portfolio rebalancing engine with drift bands
-- `tax_rules.py` – Indian MF taxation rules (FIFO lot accounting, exemptions)
-- `data_fetcher.py` – Pulls NAV data from mfapi.in
-- `config.py` – Configuration for target weights and tax parameters
-- Indian-specific README and engineering documentation
-
-**Tax Logic:**
-- Equity funds: 20% STCG (< 12 months), 12.5% LTCG (≥ 12 months) with Rs 1.25L exemption
-- Specified debt funds: Always at investor's income tax slab rate
-- Hybrid/Other funds: Slab rate STCG (< 24 months), 12.5% LTCG (≥ 24 months)
-- FIFO-mandated lot accounting (unlike US average-cost basis)
-
----
-
-## 🏗️ High-Level Architecture
-
-### Shared Core (Both branches use)
 ```
-preprocessor.py          # Feature engineering and data preparation
-├── create_features()    # Returns, moving averages, volatility, momentum
-└── build_supervised()   # Sliding window generation
-```
-
-### ML Models (Training & Inference)
-```
-lstm.py                  # LSTM architecture (2 layers, 128 units, dropout 0.2)
-rnn.py                   # RNN architecture (2 layers, 128 units, dropout 0.2)
-xgb.py                   # XGBoost (400 estimators, max depth 6)
-lr.py                    # Linear Regression (sklearn)
-```
-
-### Tax-Aware Rebalancing (Regime-Specific)
-```
-US-ETF Branch:
-  fund_net_returns_calculator.py    # US capital gains logic
-  
-Indian-MF Branch:
-  rebalancer.py                     # Indian FIFO + exemption logic
-  tax_rules.py                      # Tax computation engine
+data_fetcher.py   -> data/nav/{label}.csv, data/scheme_meta.json
+forecast.py       -> model_output/ (predictions + saved models per fund)
+tax_rules.py      -> FIFOLotBook, FYExemptionTracker, compute_tax()
+rebalancer.py     -> Portfolio + run_backtest(tax_aware: bool, ...)
+main_poc.py       -> orchestrates all of the above, prints/saves the comparison
 ```
 
----
+`rebalancer.run_backtest` implements two strategies on the same market path:
 
-## 📊 Model Configuration
+- **naive**: rebalances to exact target weight every month, sells picked by
+  "most overweight first" -- no drift tolerance, no forecast input.
+- **tax_aware**: only trims/tops-up a scheme once it has drifted past
+  `config.DRIFT_BAND` (2026-07 default: 1.5 points -- see the comment in
+  `config.py` for how this was calibrated against this basket's actual
+  drift), and among overweight candidates prefers trimming the one the
+  trained forecaster expects to perform worst going forward.
 
-### Training Parameters
-- **Input Window**: 180 trading days (~6 months)
-- **Forecast Horizon**: 182 days (~6 months)
-- **Training Period**: 2020-2022
-- **Test Period**: 2023-2025
-- **Feature Set**: Returns, moving averages, volatility, momentum, volume, cyclical time
+Both strategies pay FIFO-correct tax per `tax_rules.py`. The comparison
+reports realized gain, tax paid, trade count, and terminal value both at
+mark-to-market and after simulating a full liquidation (so a strategy that
+merely *defers* tax isn't mistaken for one that *reduces* it).
 
-### Model Architectures
-| Model | Architecture | Best For |
-|-------|--------------|----------|
-| **LSTM** | 2 layers, 128 hidden units, dropout 0.2 | Temporal pattern recognition |
-| **RNN** | 2 layers, 128 hidden units, dropout 0.2 | Sequential dependencies |
-| **XGBoost** | 400 estimators, max depth 6 | Fast, interpretable baseline |
-| **Linear Regression** | Standard sklearn | Benchmark, interpretability |
+## Running it
 
----
-
-## 🚀 Quick Start
-
-### US-ETF Branch
 ```bash
-# Checkout the US-ETF branch
-git checkout us-etf
+pip install -r ../requirements.txt   # + xgboost if not already installed
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Train all models
-python main.py
-
-# Run tax-aware portfolio optimization
-python fund_net_returns_calculator.py
-
-# Make individual sell/hold decisions
-python decide_sell.py
+python data_fetcher.py     # pull NAV history + scheme categories from mfapi.in
+python forecast.py         # train xgboost forecasters, write model_output/
+python main_poc.py         # fetch (if missing) -> forecast -> compare -> results/
 ```
 
-### Indian-MF Branch
-```bash
-# Checkout the Indian-MF branch
-git checkout indian-mf
+`main_poc.py` flags:
+- `--refetch` -- force re-pull NAV data.
+- `--no-forecast` -- skip ML forecasting; tax-aware sell ranking falls back
+  to magnitude-of-overweight, isolating the pure drift-band/FIFO/exemption
+  tax effect from the forecast-based scheme-selection effect.
+- `--model {xgb,lstm}` -- which forecaster to train (xgb is much faster).
 
-# Install dependencies
-pip install -r requirements.txt
+Note: on this machine, importing `torch` before `xgboost` in the same
+process segfaults (conflicting bundled OpenMP runtimes on macOS) --
+`forecast.py` imports `xgb` first for this reason. The same latent issue
+exists in `../main.py`, which imports `torch` before `xgb`; it just never
+surfaced there because `xgboost` wasn't installed in this environment before
+now.
 
-# Fetch mutual fund NAV data
-python data_fetcher.py
-
-# Train forecasters
-python forecast.py
-
-# Run complete pipeline with tax comparison
-python main_poc.py
-```
-
----
-
-## 📈 Key Insights & Comparisons
-
-### US-ETF Approach
-- **Focus**: Predicting individual stock returns and optimizing rebalancing under US tax rules
-- **Advantage**: Simple tax regime (long-term vs short-term rates)
-- **Challenge**: Multiple realized gains/losses in single calendar year
-- **Lot Strategy**: Average-cost basis (implicit lot selection)
-
-### Indian-MF Approach
-- **Focus**: Tax-efficient rebalancing across mutual fund schemes with drift bands
-- **Advantage**: Pre-tax consolidated NAV data, predictable tax treatment by category
-- **Challenge**: Complex multi-bucket tax regime, FIFO-mandated lot selection, financial-year boundaries
-- **Lot Strategy**: FIFO-enforced (legally mandated in India)
-
-### Key Tax Differences
-| Aspect | US | India |
-|--------|----|----|
-| **Long-term threshold** | 1 year | 12 months (equity), 24 months (hybrid) |
-| **Tax rate structure** | 0%, 15%, 20% (federal) + state | 12.5%, 20%, or slab rate by category |
-| **Lot selection** | Flexible | FIFO-mandated for MFs |
-| **Tax year** | Calendar | Financial year (Apr-Mar) |
-| **Special exemptions** | None for trades | Rs 1.25L equity LTCG exemption (India) |
-
----
-
-## 📚 Documentation
-
-- **US-ETF Branch**: See `README.md` for detailed US portfolio setup and usage
-- **Indian-MF Branch**: See `README.md` for India-specific setup and `ENGINEERING.md` for tax rules deep-dive
-- **This branch (`main`)**: High-level overview and project context
-
----
-
-## 👤 Poster & Project Context
-
-**Course**: CS229 – Machine Learning (Stanford University)  
-**Project Type**: Comparative study of ML-driven tax-aware portfolio rebalancing  
-**Focus**: Validating that forecast-informed sell decisions outperform baseline drift-based strategies under realistic tax constraints
-
----
-
-## 🔧 Technical Stack
-
-- **Core**: Python 3.8+
-- **Data Processing**: pandas, numpy
-- **ML Models**: PyTorch (LSTM/RNN), scikit-learn (Linear Regression), XGBoost
-- **Utilities**: joblib (serialization), pandas, scipy
-- **Data Sources**: 
-  - US: Yahoo Finance or similar OHLCV data
-  - India: mfapi.in (free AMFI NAV data)
-
----
-
-## 📋 Data Requirements
-
-### US-ETF Branch
-**Stock Price Data** (`data/csv_files/`):
-```csv
-Date,Close,High,Low,Open,Volume
-2015-01-02,24.23,24.705,23.79,24.69,212818400
-```
-
-**Fund Composition** (`funds/`):
-```csv
-Date,Stock,Weight
-2025-01-31,AAPL,30
-2025-01-31,MSFT,70
-```
-
-### Indian-MF Branch
-**NAV Data** (auto-fetched from mfapi.in):
-- Mutual fund NAV history for 6 schemes across equity/debt/hybrid/gold categories
-
-**Fund Composition** (auto-generated from config):
-```csv
-Date,Scheme,Weight
-2025-01-31,large_cap,25
-2025-01-31,flexi_cap,25
-2025-01-31,small_cap,15
-...
-```
-
----
-
-## 📊 Output Artifacts
-
-### US-ETF Branch
-```
-model_output/{lstm,rnn,lr,xgb}/
-├── models/                       # Trained model files
-├── {ticker}_predictions.csv      # Test set predictions
-└── summary_{model}.csv           # Performance metrics
-
-tax_results/
-├── {fund}_tax_report.csv         # Detailed trade-by-trade analysis
-└── summary_funds_tax.csv         # Aggregated results
-```
-
-### Indian-MF Branch
-```
-model_output/
-└── {scheme}_xgb_predictions.csv  # Predictions per fund
-
-results/
-├── ledger_naive.csv              # Baseline strategy trades
-├── ledger_tax_aware.csv          # Tax-optimized strategy trades
-└── summary.csv                   # Comparison metrics
-```
-
----
-
-## ⚠️ Known Limitations
-
-### Both Branches
-- No transaction fees or expense ratios modeled
-- No STT (India) or commissions (US)
-- Static target allocations (not dynamic optimization)
-
-### US-ETF Branch
-- Assumes average-cost basis for lot selection
-- No alternative minimum tax (AMT) considerations
-- State and local taxes not included
-
-### Indian-MF Branch
-- No surcharge or cess modeling
-- Balanced Advantage Fund tax category hardcoded (not dynamically determined)
-- NAV-only data means high/low/open/volume are synthetic
-- Loss harvesting not modeled
-- Backtest window capped at 2025-12-31
-
----
-
-## 🔗 Useful Links
-
-- [mfapi.in](https://www.mfapi.in/) – Free AMFI Mutual Fund NAV data
-- [Finnovate – MF Taxation FY2025-26](https://www.finnovate.in/learn/blog/mutual-fund-taxation-india-fy-2025-26)
-- [US IRS Capital Gains Rates](https://www.irs.gov/taxtopics/tc409)
-
----
-
-## 📝 License
-
-CS229 Course Project  
-Authored by Dhruv Arcot
-
----
-
-## 🤝 Contributing
-
-For branches:
-- **us-etf**: Report issues specific to US portfolio optimization or stock data
-- **indian-mf**: Report issues specific to Indian MF rebalancing or tax logic
-
----
-
-**Last Updated**: July 2026  
-**Maintained**: Dhruv Arcot
+Outputs land in `results/`: `ledger_naive.csv`, `ledger_tax_aware.csv` (every
+buy/sell with realized gain, term, tax due), and `summary.csv`.
